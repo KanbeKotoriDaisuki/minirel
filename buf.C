@@ -105,7 +105,42 @@ const Status BufMgr::allocBuf(int& frame) {
   return BUFFEREXCEEDED;
 }
 
-const Status BufMgr::readPage(File* file, const int pageNo, Page*& page) {}
+const Status BufMgr::readPage(File* file, const int pageNo, Page*& page) {
+    int frameNo = -1;
+    Status status = OK;
+    status = hashTable->lookup(file, pageNo, frameNo);
+    // Case 1: page in the buffer
+    if(status == OK){
+        bufTable[frameNo]->refbit = true;
+        bufTable[frameNo]->pinCnt += 1;
+        page = bufPool[frameNo];
+        return status;
+    } else { // Case 2: page not in the buffer
+        // allocate a buffer
+        status = allocBuf(frameNo);
+        if(status != OK) // No available frame
+            return status;
+
+        // read in the page
+        status = file->readPage(pageNo, &bufPool[frameNo]);
+        if(status != OK) { // Read file error
+            if(status == UNIXERR){ // Bad input
+                return status;
+            } else {
+                std::cout << "Bad input from BufMgr::readPage" << std::endl;
+            }
+        }
+
+        // set hashtable
+        status = hashTable->insert(file, pageNo, frameNo);
+        if(status != OK) return status;
+
+        // set buf desc
+        bufTable[frameNo].Set(file, pageNo);
+        page = &bufPool[frameNo];
+    }
+    return status;
+}
 
 const Status BufMgr::unPinPage(File* file, const int pageNo, const bool dirty) {
   // the value of this variable `status` will be returned
