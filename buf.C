@@ -122,6 +122,8 @@ const Status BufMgr::readPage(File* file, const int pageNo, Page*& page) {
     status = allocBuf(frameNo);
     // read page to the freed buffer frame
     if (status == OK) status = file->readPage(pageNo, bufPool + frameNo);
+    // update disk read statistics
+    if (status == OK) bufStats.diskreads++;
     // insert page information into the hash table
     if (status == OK) status = hashTable->insert(file, pageNo, frameNo);
     // set up the return value and and buffer description
@@ -165,6 +167,8 @@ const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page) {
 
   // allocate a page in the file
   status = file->allocatePage(pageNo);
+  // update disk read statistics
+  if (status == OK) bufStats.diskreads++;
   // allocate a buffer frame
   auto frameNo = 0;
   if (status == OK) status = allocBuf(frameNo);
