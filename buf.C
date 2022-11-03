@@ -86,12 +86,12 @@ const Status BufMgr::allocBuf(int& frame) {
     // if the buffer page is dirty, then we write it into the memory
     if (desc->dirty) status = desc->file->writePage(desc->pageNo, page);
     // then we remove the page from the hash table and the buf table
-    // while returning the freshly freed frame
-    if (status == OK) {
+    if (status == OK && desc->valid) {
       hashTable->remove(desc->file, desc->pageNo);
-      bufTable[desc->frameNo].Clear();
-      frame = desc->frameNo;
+      desc->Clear();
     }
+    // finally, return the freshly freed frame
+    if (status == OK) frame = desc->frameNo;
 
     return status;
   }
