@@ -105,7 +105,41 @@ const Status BufMgr::allocBuf(int& frame) {
   return BUFFEREXCEEDED;
 }
 
-const Status BufMgr::readPage(File* file, const int pageNo, Page*& page) {}
+const Status BufMgr::readPage(File* file, const int pageNo, Page*& page) {
+  // the value of this variable `status` will be returned
+  // we hope that it will not be changed into any value
+  // initialize the status of the function as OK
+  auto status = OK;
+
+  // look up the file and the page number in the hash table
+  auto frameNo = 0;
+  status = hashTable->lookup(file, pageNo, frameNo);
+
+  // if the page is not found in buffer, buffer it and return the new buffer frame
+  // else we directly return the address that we found
+  if (status == HASHNOTFOUND) {
+    // find a buffer frame that we can utilize
+    status = allocBuf(frameNo);
+    // read page to the freed buffer frame
+    if (status == OK) status = file->readPage(pageNo, bufPool + frameNo);
+    // update disk read statistics
+    if (status == OK) bufStats.diskreads++;
+    // insert page information into the hash table
+    if (status == OK) status = hashTable->insert(file, pageNo, frameNo);
+    // set up the return value and and buffer description
+    if (status == OK) {
+      page = bufPool + frameNo;
+      bufTable[frameNo].Set(file, pageNo);
+    }
+  } else if (status == OK) {
+    // set up the return value and the buffer description
+    bufTable[frameNo].refbit = true;
+    bufTable[frameNo].pinCnt++;
+    page = bufPool + frameNo;
+  }
+
+  return status;
+}
 
 const Status BufMgr::unPinPage(File* file, const int pageNo, const bool dirty) {
   // the value of this variable `status` will be returned
@@ -125,7 +159,29 @@ const Status BufMgr::unPinPage(File* file, const int pageNo, const bool dirty) {
   return status;
 }
 
-const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page) {}
+const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page) {
+  // the value of this variable `status` will be returned
+  // we hope that it will not be changed into any value
+  // initialize the status of the function as OK
+  auto status = OK;
+
+  // allocate a page in the file
+  status = file->allocatePage(pageNo);
+  // update disk read statistics
+  if (status == OK) bufStats.diskreads++;
+  // allocate a buffer frame
+  auto frameNo = 0;
+  if (status == OK) status = allocBuf(frameNo);
+  // insert page information into the hash table
+  if (status == OK) status = hashTable->insert(file, pageNo, frameNo);
+  // set up the return values and the buffer description
+  if (status == OK) {
+    bufTable[frameNo].Set(file, pageNo);
+    page = bufPool + frameNo;
+  }
+
+  return status;
+}
 
 const Status BufMgr::disposePage(File* file, const int pageNo) {
   // see if it is in the buffer pool
