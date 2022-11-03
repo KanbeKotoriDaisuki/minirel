@@ -147,7 +147,9 @@ const Status BufMgr::unPinPage(File* file, const int pageNo, const bool dirty) {
   int frameNo = 0;
   status = hashTable->lookup(file, pageNo, frameNo);
 
-  // decrement the frame if it is found
+  // check if there is space to decrement
+  if (status == OK && bufTable[frameNo].pinCnt == 0) status = PAGENOTPINNED;
+  // if we can decrement, then decrement the number of pinCnt by 1
   if (status == OK) bufTable[frameNo].pinCnt--;
   // also, if parameter `dirty` is set, then the frame's dirty bit is set
   if (status == OK) bufTable[frameNo].dirty |= dirty;
