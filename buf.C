@@ -111,9 +111,9 @@ const Status BufMgr::readPage(File* file, const int pageNo, Page*& page) {
     status = hashTable->lookup(file, pageNo, frameNo);
     // Case 1: page in the buffer
     if(status == OK){
-        bufTable[frameNo]->refbit = true;
-        bufTable[frameNo]->pinCnt += 1;
-        page = bufPool[frameNo];
+        bufTable[frameNo].refbit = true;
+        bufTable[frameNo].pinCnt += 1;
+        page = &bufPool[frameNo];
         return status;
     } else { // Case 2: page not in the buffer
         // allocate a buffer
