@@ -63,42 +63,38 @@ const Status BufMgr::allocBuf(int& frame) {
   // initialize the status of the function as OK
   auto status = OK;
 
-  // following the clock algorithm, advance clock first
-  advanceClock();
-
-  // we will be recording where we start to know when we completed a loop
-  const auto initialClockHand = clockHand;
-
   // at most two loops of the clock can happen
   // any unpinned and not recently refered page will be returned in the first loop
   // any unpinned page with set refbit will have its refbit clearly in the first loop
   // thus, in the second loop, it will be returned
-  // so if we cannot find a free buffer after two loops, we will have to resign
-  for (auto i = 0; i < 2; i++)
-    for (; clockHand != initialClockHand; advanceClock()) {
-      // these are the pointers to the current buffer description and the current buffer page
-      auto desc = bufTable + clockHand;
-      auto page = bufPool + clockHand;
+  // so if we cannot find a free buffer after two entire cycle, we will have to resign
+  for (auto i = 0; i < 2 * numBufs; i++, advanceClock()) {
+    // these are the pointers to the current buffer description and the current buffer page
+    auto desc = bufTable + clockHand;
+    auto page = bufPool + clockHand;
 
-      // skip to the next loop if the buffer fails any tests described in the clock algorithm
-      if (desc->valid) {
-        if (desc->refbit) {
-          desc->refbit = false;
-          continue;
-        } else if (desc->pinCnt) {
-          continue;
-        }
+    // skip to the next loop if the buffer fails any tests described in the clock algorithm
+    if (desc->valid) {
+      if (desc->refbit) {
+        desc->refbit = false;
+        continue;
+      } else if (desc->pinCnt) {
+        continue;
       }
-
-      // if the buffer page is dirty, then we write it into the memory
-      if (desc->dirty) status = desc->file->writePage(desc->pageNo, page);
-      // then we remove the page from the hash table and memory
-      if (status == OK) status = disposePage(desc->file, desc->pageNo);
-      // finally, if everything goes all right, we can provide the freshly freed frame
-      if (status == OK) frame = desc->frameNo;
-
-      return status;
     }
+
+    // if the buffer page is dirty, then we write it into the memory
+    if (desc->dirty) status = desc->file->writePage(desc->pageNo, page);
+    // then we remove the page from the hash table and the buf table
+    if (status == OK && desc->valid) {
+      hashTable->remove(desc->file, desc->pageNo);
+      desc->Clear();
+    }
+    // finally, return the freshly freed frame
+    if (status == OK) frame = desc->frameNo;
+
+    return status;
+  }
 
   // if the execution reaches here, there must be no buffer that we can allocate
   // so an BUFFEREXCEEDED error is returned
@@ -151,7 +147,9 @@ const Status BufMgr::unPinPage(File* file, const int pageNo, const bool dirty) {
   int frameNo = 0;
   status = hashTable->lookup(file, pageNo, frameNo);
 
-  // decrement the frame if it is found
+  // check if there is space to decrement
+  if (status == OK && bufTable[frameNo].pinCnt == 0) status = PAGENOTPINNED;
+  // if we can decrement, then decrement the number of pinCnt by 1
   if (status == OK) bufTable[frameNo].pinCnt--;
   // also, if parameter `dirty` is set, then the frame's dirty bit is set
   if (status == OK) bufTable[frameNo].dirty |= dirty;
